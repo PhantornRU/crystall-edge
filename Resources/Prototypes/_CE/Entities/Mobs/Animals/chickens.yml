@@ -1,0 +1,151 @@
+# Birds share the existing CE mob, GOAP, ingestion and satiation infrastructure.
+- type: entity
+  id: CEMobChickenBase
+  abstract: true
+  parent: [CEMobSimple, CEMobGOAPBase, MobBloodstream, BaseMobAnimal]
+  categories: [ForkFiltered]
+  components:
+  - type: CEGOAP
+    behaviors: [Chicken]
+    dormant: false
+    memoryDuration: 4
+  - type: CEGOAPEyesPerceptor
+    visionRadius: 4
+    updateInterval: 1
+    components:
+    - type: NpcFactionMember
+    - type: Edible
+  - type: CEGOAPSteering
+    climb: false
+    smash: false
+    pry: false
+    interact: false
+    unbuckle: false
+    unpull: false
+    escapeStorage: false
+  - type: NpcFactionMember
+    factions: [CEImperial]
+  - type: Satiation
+    satiations:
+      Hunger: {prototype: SimpleMobBaseHunger}
+  - type: CEAnimalForaging
+    foodTarget: ChickenFood
+    foodTags: [Wheat, Corn, Vegetable]
+    searchRadius: 3
+    eatRange: 0.9
+    hungryThreshold: 60
+    exhaustionThreshold: 10
+    recoveryThreshold: 60
+    searchSpeedModifier: 1.35
+    grazeInterval: 12
+    grazeNutrition: 2
+    grazeLimit: 50
+    grazingTiles: [CEGrass, CEGrassLight, CEGrassTall, CEGrassAutumn, CEGrassAutumnLight, CEGrassAutumnTall]
+    eggAttemptInterval: 300
+  - type: MovementSpeedModifier
+    baseWalkSpeed: 1.5
+    baseSprintSpeed: 2
+  - type: StandingState
+  - type: RotationVisuals
+    horizontalRotation: 90
+  - type: Fixtures
+    fixtures:
+      fix1:
+        shape: !type:PhysShapeCircle
+          radius: 0.3
+        density: 8
+        mask: [MobMask]
+        layer: [MobLayer]
+  - type: MobThresholds
+    thresholds:
+      0: Alive
+      25: Critical
+      50: Dead
+  - type: Sprite
+    layers:
+    - map: ["enum.DamageStateVisualLayers.Base"]
+      state: live
+  - type: DamageStateVisuals
+    states:
+      Alive: {Base: live}
+      Critical: {Base: dead}
+      Dead: {Base: dead}
+
+- type: entity
+  id: CEMobChickenHenBase
+  abstract: true
+  parent: CEMobChickenBase
+  components:
+  - type: SatiationProduction
+    automatic: false
+    minimumSatiation: 60
+    satiationUsage: 10
+  - type: EntityProducer
+    table: !type:EntSelector
+      id: CEFoodEgg
+
+- type: entity
+  id: CEMobChickenHenWhite
+  parent: CEMobChickenHenBase
+  name: white hen
+  description: A white hen that pecks at nearby food and lays eggs when fed.
+  components:
+  - type: Sprite
+    sprite: _CE/Mobs/Animals/chicken_white.rsi
+
+- type: entity
+  id: CEMobChickenHenBrown
+  parent: CEMobChickenHenBase
+  name: brown hen
+  description: A brown hen that pecks at nearby food and lays eggs when fed.
+  components:
+  - type: Sprite
+    sprite: _CE/Mobs/Animals/chicken_brown.rsi
+
+- type: entity
+  id: CEMobChickenRooster
+  parent: CEMobChickenBase
+  name: rooster
+  description: A rooster that wanders, forages and flees from danger.
+  components:
+  - type: Sprite
+    sprite: _CE/Mobs/Animals/rooster.rsi
+
+- type: entity
+  id: CEMobChickenChick
+  parent: CEMobChickenBase
+  name: chick
+  suffix: White hen
+  description: A chick that grows when healthy and sufficiently nourished.
+  components:
+  - type: Sprite
+    drawdepth: SmallMobs
+    sprite: _CE/Mobs/Animals/chick.rsi
+  - type: Fixtures
+    fixtures:
+      fix1:
+        shape: !type:PhysShapeCircle
+          radius: 0.2
+        density: 5
+        mask: [SmallMobMask]
+        layer: [SmallMobLayer]
+  - type: CEAnimalGrowth
+    remaining: 900
+    growInto: CEMobChickenHenWhite
+    minimumSatiation: 25
+
+- type: entity
+  id: CEMobChickenChickBrown
+  parent: CEMobChickenChick
+  suffix: Brown hen
+  components:
+  - type: CEAnimalGrowth
+    growInto: CEMobChickenHenBrown
+
+- type: entity
+  id: CEMobChickenChickMale
+  parent: CEMobChickenChick
+  suffix: Rooster
+  components:
+  - type: CEAnimalGrowth
+    growInto: CEMobChickenRooster
