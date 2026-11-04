@@ -1,17 +1,28 @@
 using Content.Server._CE.Animals.Components;
+using Content.Shared.Body;
+using Content.Shared.Body.Components;
+using Content.Shared.Body.Systems;
+using Content.Shared.Chemistry.EntitySystems;
+using Content.Shared.Chemistry.Reagent;
 using Content.Shared.Damage.Components;
 using Content.Shared.Damage.Systems;
 using Content.Shared.DoAfter;
+using Content.Shared.FixedPoint;
 using Content.Shared.Mind;
 using Content.Shared.Mobs.Systems;
 using Content.Shared.Nutrition.Components;
 using Content.Shared.Nutrition.EntitySystems;
 using Robust.Shared.Containers;
+using Robust.Shared.Prototypes;
 
 namespace Content.Server._CE.Animals.Systems;
 
 public sealed partial class CEAnimalGrowthSystem : EntitySystem
 {
+    private static readonly ProtoId<ReagentPrototype> Nutriment = "CENutriment";
+
+    [Dependency] private BodySystem _body = default!;
+    [Dependency] private SharedSolutionContainerSystem _solutions = default!;
     [Dependency] private SharedContainerSystem _containers = default!;
     [Dependency] private DamageableSystem _damageable = default!;
     [Dependency] private SharedDoAfterSystem _doAfter = default!;
@@ -27,6 +38,7 @@ public sealed partial class CEAnimalGrowthSystem : EntitySystem
         if (frameTime <= 0 || !float.IsFinite(frameTime))
             return;
 
+        var elapsed = TimeSpan.FromSeconds(frameTime);
         List<Entity<CEAnimalGrowthComponent>>? ready = null;
         var query = EntityQueryEnumerator<CEAnimalGrowthComponent, SatiationComponent>();
         while (query.MoveNext(out var uid, out var growth, out var satiation))
@@ -34,7 +46,7 @@ public sealed partial class CEAnimalGrowthSystem : EntitySystem
             if (!CanGrow((uid, growth), satiation))
                 continue;
 
-            growth.Remaining -= TimeSpan.FromSeconds(frameTime);
+            growth.Remaining -= elapsed;
             if (growth.Remaining <= TimeSpan.Zero)
                 (ready ??= new()).Add((uid, growth));
         }
@@ -62,13 +74,14 @@ public sealed partial class CEAnimalGrowthSystem : EntitySystem
             !float.IsFinite(hunger) || hunger < animal.Comp.MinimumSatiation)
             return false;
 
-        return !TryComp<CEAnimalForagingComponent>(animal, out var foraging) ||
-               !foraging.Exhausted && !foraging.Eating && !_doAfter.IsRunning(foraging.EatingDoAfter);
+        return !HasComp<CEAnimalExhaustedComponent>(animal) &&
+               (!TryComp<CEAnimalForagingComponent>(animal, out var foraging) ||
+                foraging.BiteStatus == null && !_doAfter.IsRunning(foraging.EatingDoAfter));
     }
 
     private void TryGrow(Entity<CEAnimalGrowthComponent> animal)
     {
-        if (!TryComp<SatiationComponent>(animal, out var satiation) || !CanGrow(animal, satiation) ||
+        if (!TryComp<SatiationComponent>(animal, out var satiation) || !CanGrow(animal, satiation) || HasPendingNutrition(animal) ||
             !TryComp<TransformComponent>(animal, out var transform) || transform.MapUid == null)
             return;
 
@@ -107,6 +120,24 @@ public sealed partial class CEAnimalGrowthSystem : EntitySystem
 
         QueueDel(animal);
     }
+
+    private bool HasPendingNutrition(EntityUid animal)
+    {
+        // A completed bite can still be in any stage of digestion. Let native metabolism finish
+        // before deleting the old body and its organs; blood and unrelated reagents do not delay growth.
+        foreach (var stomach in _body.EnumerateOrgans<StomachComponent>(animal))
+        {
+            if (HasNutrition(stomach.Owner, StomachSystem.DefaultSolutionName))
+                return true;
+        }
+
+        return TryComp<BloodstreamComponent>(animal, out var blood) &&
+               (HasNutrition(animal, blood.BloodSolutionName) || HasNutrition(animal, blood.MetabolitesSolutionName));
+    }
+
+    private bool HasNutrition(EntityUid uid, string solutionName) =>
+        _solutions.TryGetSolution(uid, solutionName, out _, out var solution) &&
+        solution.GetTotalPrototypeQuantity(Nutriment) > FixedPoint2.Zero;
 
     private bool TryTransferState(EntityUid source, EntityUid adult, SatiationComponent sourceSatiation)
     {

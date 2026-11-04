@@ -1,4 +1,5 @@
 using Content.Shared._CE.Cooking.Prototypes;
+using Content.Shared._CE.GOAP;
 using Content.Shared._CE.GOAP.Prototypes;
 using Content.Shared.DoAfter;
 using Robust.Shared.GameStates;
@@ -36,16 +37,11 @@ public sealed partial class CEAnimalForagingComponent : Component
     [DataField] public HashSet<string> GrazingTiles = new();
     [DataField] public TimeSpan EggAttemptInterval = TimeSpan.FromSeconds(300);
 
-    [DataField] public bool Hungry;
-    [DataField] public bool Exhausted;
     [DataField] public EntityUid? SelectedFood;
     [DataField] public EntityUid? FailedFood;
     [DataField] public EntityUid? LastThreat;
-    [DataField] public bool Eating;
-    [DataField] public bool StartingBite;
+    [DataField] public CEGOAPActionStatus? BiteStatus;
     [DataField] public DoAfterId? EatingDoAfter;
-    [DataField] public bool BiteSucceeded;
-    [DataField] public bool BiteCompleted;
 
     [DataField(customTypeSerializer: typeof(TimeOffsetSerializer)), AutoPausedField]
     public TimeSpan NextUpdate;

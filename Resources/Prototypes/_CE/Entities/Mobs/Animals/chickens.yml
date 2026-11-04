@@ -8,7 +8,7 @@
   - type: CEGOAP
     behaviors: [Chicken]
     dormant: false
-    memoryDuration: 4
+    memoryDuration: 6
   - type: CEGOAPEyesPerceptor
     visionRadius: 4
     updateInterval: 1
