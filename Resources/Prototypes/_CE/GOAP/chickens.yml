@@ -11,8 +11,6 @@
     Threat: !type:CEGOAPSelectorNearestKnown
       conditions:
       - !type:CEAnimalThreat
-      - !type:Incapacitated
-        inverted: true
   sensors:
   - !type:CEGOAPHasComponentSensorEntry
     conditionKey: AnimalHungry

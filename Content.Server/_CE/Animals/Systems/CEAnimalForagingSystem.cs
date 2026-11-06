@@ -21,8 +21,6 @@ using Content.Shared.Maps;
 using Content.Shared.Mobs.Systems;
 using Content.Shared.Movement.Events;
 using Content.Shared.Movement.Systems;
-using Content.Shared.NPC.Components;
-using Content.Shared.NPC.Systems;
 using Content.Shared.Nutrition;
 using Content.Shared.Nutrition.Components;
 using Content.Shared.Nutrition.EntitySystems;
@@ -38,6 +36,8 @@ public sealed partial class CEGOAPEatAction : CEGOAPActionBase<CEGOAPEatAction>;
 
 public sealed partial class CEAnimalForagingSystem : CEGOAPActionSystem<CEGOAPEatAction>
 {
+    private static readonly InEnemyFaction EnemyFaction = new();
+
     [Dependency] private IGameTiming _timing = default!;
     [Dependency] private SatiationSystem _satiation = default!;
     [Dependency] private IngestionSystem _ingestion = default!;
@@ -52,7 +52,6 @@ public sealed partial class CEAnimalForagingSystem : CEGOAPActionSystem<CEGOAPEa
     [Dependency] private CEGOAPSteeringSystem _steering = default!;
     [Dependency] private SatiationProductionSystem _production = default!;
     [Dependency] private TurfSystem _turf = default!;
-    [Dependency] private NpcFactionSystem _factions = default!;
     [Dependency] private EntityQuery<CEAnimalForagingComponent> _foragingQuery = default!;
     [Dependency] private EntityQuery<SatiationComponent> _satiationQuery = default!;
 
@@ -162,7 +161,6 @@ public sealed partial class CEAnimalForagingSystem : CEGOAPActionSystem<CEGOAPEa
             if (hunger == null || !_mobState.IsAlive(uid) || _containers.IsEntityInContainer(uid))
             {
                 StopEating(ent);
-                comp.SelectedFood = null;
                 continue;
             }
 
@@ -175,53 +173,22 @@ public sealed partial class CEAnimalForagingSystem : CEGOAPActionSystem<CEGOAPEa
             }
 
             if (!HasComp<CEActiveGOAPComponent>(uid) || !HasComp<CEAnimalHungryComponent>(uid)
-                || CurrentAction(uid) is CEGOAPFleeAction)
-            {
+                || comp.BiteStatus == CEGOAPActionStatus.Running
+                && (comp.TrackedFood is not { } food || !IsFoodAccessible(ent, food, comp.EatRange)))
                 StopEating(ent);
-                comp.SelectedFood = null;
-                continue;
-            }
-
-            if (comp.BiteStatus is { } status)
-            {
-                if (status == CEGOAPActionStatus.Running && (comp.SelectedFood is not { } food || !IsFood(ent, food, comp.EatRange)))
-                    StopEating(ent);
-                continue;
-            }
-
-            if (comp.SelectedFood is { } selected && !IsFood(ent, selected, SearchRange(ent)))
-                comp.SelectedFood = null;
-
-            // An approach can fail before Startup/Shutdown are called. Bound that attempt here.
-            if (comp.SelectedFood is { } stalled && now >= comp.ApproachUntil)
-            {
-                comp.FailedFood = stalled;
-                comp.RetryAt = now + comp.RetryDelay;
-                comp.SelectedFood = null;
-            }
-
-            if (comp.SelectedFood == null)
-            {
-                comp.SelectedFood = Goap.ResolveTarget(uid, comp.FoodTarget).Entity;
-                comp.ApproachUntil = now + comp.ApproachTimeout;
-            }
         }
-    }
-
-    private CEGOAPAction? CurrentAction(EntityUid uid)
-    {
-        return TryComp<CEGOAPComponent>(uid, out var goap)
-            && goap.CurrentActionIndex < goap.CurrentPlan.Count
-            ? goap.CurrentPlan[goap.CurrentActionIndex] : null;
     }
 
     private float SearchRange(Entity<CEAnimalForagingComponent> ent) =>
         HasComp<CEAnimalExhaustedComponent>(ent) ? ent.Comp.EatRange : ent.Comp.SearchRadius;
 
-    private bool IsFood(Entity<CEAnimalForagingComponent> ent, EntityUid food, float range)
+    private bool IsFoodCandidate(Entity<CEAnimalForagingComponent> ent, EntityUid food, float range) =>
+        IsFoodAccessible(ent, food, range) && TryComp<EdibleComponent>(food, out var edible)
+        && !_ingestion.IsEmpty((food, edible)) && _ingestion.CanIngest(ent, food);
+
+    private bool IsFoodAccessible(Entity<CEAnimalForagingComponent> ent, EntityUid food, float range)
     {
-        if (food == ent.Owner || TerminatingOrDeleted(food)
-            || !TryComp<EdibleComponent>(food, out var edible) || !TryComp<CEFoodTagComponent>(food, out var tags))
+        if (TerminatingOrDeleted(food) || !TryComp<CEFoodTagComponent>(food, out var tags))
             return false;
 
         foreach (var tag in tags.Tags)
@@ -229,8 +196,7 @@ public sealed partial class CEAnimalForagingSystem : CEGOAPActionSystem<CEGOAPEa
             if (ent.Comp.FoodTags.Contains(tag))
                 return !_containers.IsEntityInContainer(food)
                     && Transform(ent).Coordinates.TryDistance(EntityManager, Transform(food).Coordinates, out var distance)
-                    && distance <= range && !_ingestion.IsEmpty((food, edible))
-                    && _interaction.InRangeAndAccessible(ent.Owner, food, range) && _ingestion.CanIngest(ent, food);
+                    && distance <= range && _interaction.InRangeAndAccessible(ent.Owner, food, range);
         }
 
         return false;
@@ -240,18 +206,37 @@ public sealed partial class CEAnimalForagingSystem : CEGOAPActionSystem<CEGOAPEa
     private void OnFoodCondition(ref CEEntityConditionEvent<CECanEatNearby> args)
     {
         if (args.Args.Resolve(CEEffectTarget.User) is not { } user || !_foragingQuery.TryComp(user, out var comp)
-            || (comp.SelectedFood is { } selected && selected != args.Entity)
+            || (comp.BiteStatus != null && comp.TrackedFood != args.Entity)
             || (comp.FailedFood == args.Entity && _timing.CurTime < comp.RetryAt))
             return;
 
-        args.Result = IsFood((user, comp), args.Entity, SearchRange((user, comp)));
+        args.Result = IsFoodCandidate((user, comp), args.Entity, SearchRange((user, comp)));
     }
 
     protected override void OnCanExecute(Entity<CEGOAPComponent> ent, ref CEGOAPActionCanExecuteEvent<CEGOAPEatAction> args)
     {
-        // The ChickenFood target's condition performs full food validation during planning.
         args.CanExecute = _foragingQuery.TryComp(ent, out var comp) && HasComp<CEAnimalHungryComponent>(ent)
-            && _mobState.IsAlive(ent) && !_containers.IsEntityInContainer(ent) && comp.SelectedFood != null;
+            && _mobState.IsAlive(ent) && !_containers.IsEntityInContainer(ent);
+        if (!args.CanExecute || comp!.BiteStatus != null)
+            return;
+
+        // An unreachable target can fail before Startup; observe it without restricting the selector.
+        var target = Goap.ResolveTarget(ent, args.Action.Target);
+        args.ResolvedTarget = target;
+        var food = target.Entity;
+        args.CanExecute = food != null;
+        if (food != comp.TrackedFood || food == null)
+        {
+            comp.TrackedFood = food;
+            comp.ApproachUntil = _timing.CurTime + comp.ApproachTimeout;
+        }
+        else if (_timing.CurTime >= comp.ApproachUntil)
+        {
+            comp.FailedFood = food;
+            comp.RetryAt = _timing.CurTime + comp.RetryDelay;
+            comp.TrackedFood = null;
+            args.CanExecute = false;
+        }
     }
 
     protected override void OnActionStartup(Entity<CEGOAPComponent> ent, ref CEGOAPActionStartupEvent<CEGOAPEatAction> args)
@@ -259,9 +244,10 @@ public sealed partial class CEAnimalForagingSystem : CEGOAPActionSystem<CEGOAPEa
         if (!_foragingQuery.TryComp(ent, out var comp))
             return;
 
+        comp.TrackedFood = Goap.ResolveTarget(ent, args.Action.Target).Entity;
         comp.BiteStatus = CEGOAPActionStatus.Running;
         comp.EatingDoAfter = null;
-        if (comp.SelectedFood is not { } food || !IsFood((ent.Owner, comp), food, comp.EatRange)
+        if (comp.TrackedFood is not { } food || !IsFoodAccessible((ent.Owner, comp), food, comp.EatRange)
             || !_ingestion.TryIngest(ent.Owner, ent.Owner, food))
             comp.BiteStatus = CEGOAPActionStatus.Failed;
     }
@@ -272,7 +258,7 @@ public sealed partial class CEAnimalForagingSystem : CEGOAPActionSystem<CEGOAPEa
         if (ent.Comp.BiteStatus == CEGOAPActionStatus.Running && ent.Comp.EatingDoAfter == null
             && args.DoAfter.Args.Event is EatingDoAfterEvent
             && args.DoAfter.Args.User == ent.Owner && args.DoAfter.Args.EventTarget == ent.Owner
-            && args.DoAfter.Args.Target == ent.Comp.SelectedFood)
+            && args.DoAfter.Args.Target == ent.Comp.TrackedFood)
             ent.Comp.EatingDoAfter = args.DoAfter.Id;
     }
 
@@ -280,7 +266,7 @@ public sealed partial class CEAnimalForagingSystem : CEGOAPActionSystem<CEGOAPEa
     private void OnIngesting(Entity<CEAnimalForagingComponent> ent, ref IngestingEvent args)
     {
         if (ent.Comp.BiteStatus == CEGOAPActionStatus.Running && !args.ForceFed
-            && args.Food == ent.Comp.SelectedFood && args.Split.Volume > FixedPoint2.Zero)
+            && args.Food == ent.Comp.TrackedFood && args.Split.Volume > FixedPoint2.Zero)
             ent.Comp.BiteStatus = CEGOAPActionStatus.Finished;
     }
 
@@ -288,17 +274,17 @@ public sealed partial class CEAnimalForagingSystem : CEGOAPActionSystem<CEGOAPEa
     private void OnBeforeIngested(Entity<CEAnimalForagingComponent> ent, ref BeforeIngestedEvent args)
     {
         // Ingestion's usual DoAfter reach is 1 tile; enforce our tighter range at the actual bite too.
-        if (ent.Comp.BiteStatus == CEGOAPActionStatus.Running && ent.Comp.SelectedFood is { } food
+        if (ent.Comp.BiteStatus == CEGOAPActionStatus.Running && ent.Comp.TrackedFood is { } food
             && TryComp<EdibleComponent>(food, out var edible)
             && _solutions.TryGetSolution(food, edible.Solution, out _, out var solution)
-            && ReferenceEquals(args.Solution, solution) && !IsFood(ent, food, ent.Comp.EatRange))
+            && ReferenceEquals(args.Solution, solution) && !IsFoodAccessible(ent, food, ent.Comp.EatRange))
             args.Cancelled = true;
     }
 
     [SubscribeLocalEvent(after: [typeof(IngestionSystem)])]
     private void OnEatingCompleted(Entity<CEAnimalForagingComponent> ent, ref EatingDoAfterEvent args)
     {
-        if (ent.Comp.BiteStatus == null || args.User != ent.Owner || args.Target != ent.Comp.SelectedFood
+        if (ent.Comp.BiteStatus == null || args.User != ent.Owner || args.Target != ent.Comp.TrackedFood
             || (ent.Comp.EatingDoAfter is { } id && args.DoAfter.Id != id))
             return;
 
@@ -324,12 +310,11 @@ public sealed partial class CEAnimalForagingSystem : CEGOAPActionSystem<CEGOAPEa
 
         if (comp.BiteStatus == CEGOAPActionStatus.Failed)
         {
-            comp.FailedFood = comp.SelectedFood;
+            comp.FailedFood = comp.TrackedFood;
             comp.RetryAt = _timing.CurTime + comp.RetryDelay;
         }
 
         StopEating((ent.Owner, comp));
-        comp.SelectedFood = null;
     }
 
     private void StopEating(Entity<CEAnimalForagingComponent> ent)
@@ -338,6 +323,7 @@ public sealed partial class CEAnimalForagingSystem : CEGOAPActionSystem<CEGOAPEa
             _doAfter.Cancel(ent.Comp.EatingDoAfter);
         ent.Comp.BiteStatus = null;
         ent.Comp.EatingDoAfter = null;
+        ent.Comp.TrackedFood = null;
     }
 
     [SubscribeLocalEvent]
@@ -347,7 +333,7 @@ public sealed partial class CEAnimalForagingSystem : CEGOAPActionSystem<CEGOAPEa
         var query = AllEntityQuery<ActiveDoAfterComponent, CEAnimalForagingComponent>();
         while (query.MoveNext(out var uid, out _, out var comp))
         {
-            if (comp.SelectedFood == food.Owner && _doAfter.IsRunning(comp.EatingDoAfter))
+            if (comp.TrackedFood == food.Owner && _doAfter.IsRunning(comp.EatingDoAfter))
                 StopEating((uid, comp));
         }
     }
@@ -359,15 +345,22 @@ public sealed partial class CEAnimalForagingSystem : CEGOAPActionSystem<CEGOAPEa
             TryGraze(ent);
     }
 
+    [SubscribeLocalEvent]
+    private void OnFleeUpdate(Entity<CEAnimalForagingComponent> ent, ref CEGOAPActionUpdateEvent<CEGOAPFleeAction> args)
+    {
+        if (ent.Comp.BiteStatus == null)
+            ent.Comp.TrackedFood = null;
+    }
+
     private void TryGraze(Entity<CEAnimalForagingComponent> ent)
     {
         var comp = ent.Comp;
-        if (HasComp<CEAnimalExhaustedComponent>(ent) || comp.BiteStatus != null || comp.SelectedFood != null
+        if (HasComp<CEAnimalExhaustedComponent>(ent) || comp.BiteStatus != null
             || _timing.CurTime < comp.NextGraze
             || !TryComp<CEGOAPSteeringComponent>(ent, out var steering) || steering.Target != null
             || !TryComp<PhysicsComponent>(ent, out var body) || body.LinearVelocity.LengthSquared() > 0.01f
             || !_mobState.IsAlive(ent) || _containers.IsEntityInContainer(ent)
-            || CurrentAction(ent) is not CEGOAPExploreAction || Goap.ResolveTarget(ent, comp.ThreatTarget).Entity != null
+            || Goap.ResolveTarget(ent, comp.ThreatTarget).Entity != null
             || Hunger(ent) is not { } hunger || hunger >= comp.GrazeLimit
             || _turf.GetTileRef(Transform(ent).Coordinates) is not { } tile
             || !comp.GrazingTiles.Contains(_turf.GetContentTileDefinition(tile).ID)
@@ -382,7 +375,7 @@ public sealed partial class CEAnimalForagingSystem : CEGOAPActionSystem<CEGOAPEa
     private void OnDamaged(Entity<CEAnimalForagingComponent> ent, ref DamageDealtEvent args)
     {
         if (args.Origin is not { } source || source == ent.Owner || TerminatingOrDeleted(source)
-            || !_mobState.IsAlive(source) || !TryComp<CEGOAPComponent>(ent, out var goap))
+            || !_mobState.IsAlive(source))
             return;
 
         foreach (var amount in args.Damage.DamageDict.Values)
@@ -391,7 +384,6 @@ public sealed partial class CEAnimalForagingSystem : CEGOAPActionSystem<CEGOAPEa
                 continue;
             ent.Comp.LastThreat = source;
             ent.Comp.ThreatUntil = _timing.CurTime + ent.Comp.ThreatMemory;
-            Goap.Remember((ent.Owner, goap), source, Transform(source).Coordinates, ent.Comp.ThreatMemory);
             break;
         }
     }
@@ -404,16 +396,8 @@ public sealed partial class CEAnimalForagingSystem : CEGOAPActionSystem<CEGOAPEa
             || !_mobState.IsAlive(args.Entity) || Transform(user).MapID != Transform(args.Entity).MapID)
             return;
 
-        if (comp.LastThreat == args.Entity && _timing.CurTime < comp.ThreatUntil)
-        {
-            args.Result = true;
-            return;
-        }
-
-        args.Result = TryComp<NpcFactionMemberComponent>(user, out var ownFaction)
-            && TryComp<NpcFactionMemberComponent>(args.Entity, out var otherFaction)
-            && !_factions.IsEntityFriendly((user, ownFaction), (args.Entity, otherFaction))
-            && _factions.IsMemberOfAny((args.Entity, otherFaction), ownFaction.HostileFactions);
+        args.Result = comp.LastThreat == args.Entity && _timing.CurTime < comp.ThreatUntil
+            || EnemyFaction.Passes(args.Args with { Target = args.Entity });
     }
 
     [SubscribeLocalEvent]

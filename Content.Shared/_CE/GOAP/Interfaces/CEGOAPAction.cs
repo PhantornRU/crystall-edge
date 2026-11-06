@@ -1,6 +1,7 @@
 namespace Content.Shared._CE.GOAP;
 
 using Content.Shared._CE.GOAP.Prototypes;
+using Content.Shared._CE.GOAP.Selectors;
 using Robust.Shared.Prototypes;
 
 /// <summary>
@@ -75,7 +76,10 @@ public abstract partial class CEGOAPAction
     /// Checks whether this action can currently be executed (e.g. not on cooldown).
     /// Called by the planner to filter unavailable actions before planning.
     /// </summary>
-    public abstract bool RaiseCanExecute(EntityUid uid, IEntityManager entMan);
+    public bool RaiseCanExecute(EntityUid uid, IEntityManager entMan) => RaiseCanExecute(uid, entMan, out _);
+
+    /// <summary>Also returns a target resolved by the handler, for reuse in this planning call.</summary>
+    public abstract bool RaiseCanExecute(EntityUid uid, IEntityManager entMan, out CEGOAPSelectorResult? resolvedTarget);
 
     /// <summary>
     /// Raises the startup event on the entity to begin action execution.
@@ -107,13 +111,15 @@ public abstract partial class CEGOAPActionBase<T> : CEGOAPAction where T : CEGOA
         entMan.EventBus.RaiseLocalEvent(uid, ref ev);
     }
 
-    public override bool RaiseCanExecute(EntityUid uid, IEntityManager entMan)
+    public override bool RaiseCanExecute(EntityUid uid, IEntityManager entMan, out CEGOAPSelectorResult? resolvedTarget)
     {
+        resolvedTarget = null;
         if (this is not T self)
             return false;
 
         var ev = new CEGOAPActionCanExecuteEvent<T>(self);
         entMan.EventBus.RaiseLocalEvent(uid, ref ev);
+        resolvedTarget = ev.ResolvedTarget;
         return ev.CanExecute;
     }
 
@@ -181,4 +187,7 @@ public record struct CEGOAPActionShutdownEvent<T>(T Action) where T : CEGOAPActi
 public record struct CEGOAPActionCanExecuteEvent<T>(T Action) where T : CEGOAPActionBase<T>
 {
     public bool CanExecute = true;
+
+    /// <summary>Null means not resolved; an empty result means resolved with no target.</summary>
+    public CEGOAPSelectorResult? ResolvedTarget;
 }

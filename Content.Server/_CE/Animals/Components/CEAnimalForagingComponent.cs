@@ -13,9 +13,6 @@ namespace Content.Server._CE.Animals.Components;
 public sealed partial class CEAnimalForagingComponent : Component
 {
     [DataField]
-    public ProtoId<CEGOAPTargetPrototype> FoodTarget = "ChickenFood";
-
-    [DataField]
     public ProtoId<CEGOAPTargetPrototype> ThreatTarget = "Threat";
 
     [DataField(required: true)]
@@ -37,7 +34,8 @@ public sealed partial class CEAnimalForagingComponent : Component
     [DataField] public HashSet<string> GrazingTiles = new();
     [DataField] public TimeSpan EggAttemptInterval = TimeSpan.FromSeconds(300);
 
-    [DataField] public EntityUid? SelectedFood;
+    // Observed approach candidate until Startup; fixed ingestion target while BiteStatus is set.
+    [DataField] public EntityUid? TrackedFood;
     [DataField] public EntityUid? FailedFood;
     [DataField] public EntityUid? LastThreat;
     [DataField] public CEGOAPActionStatus? BiteStatus;

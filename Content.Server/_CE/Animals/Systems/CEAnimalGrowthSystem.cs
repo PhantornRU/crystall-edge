@@ -6,7 +6,6 @@ using Content.Shared.Chemistry.EntitySystems;
 using Content.Shared.Chemistry.Reagent;
 using Content.Shared.Damage.Components;
 using Content.Shared.Damage.Systems;
-using Content.Shared.DoAfter;
 using Content.Shared.FixedPoint;
 using Content.Shared.Mind;
 using Content.Shared.Mobs.Systems;
@@ -25,7 +24,6 @@ public sealed partial class CEAnimalGrowthSystem : EntitySystem
     [Dependency] private SharedSolutionContainerSystem _solutions = default!;
     [Dependency] private SharedContainerSystem _containers = default!;
     [Dependency] private DamageableSystem _damageable = default!;
-    [Dependency] private SharedDoAfterSystem _doAfter = default!;
     [Dependency] private SharedMindSystem _mind = default!;
     [Dependency] private MobStateSystem _mobState = default!;
     [Dependency] private MobThresholdSystem _thresholds = default!;
@@ -35,54 +33,41 @@ public sealed partial class CEAnimalGrowthSystem : EntitySystem
 
     public override void Update(float frameTime)
     {
-        if (frameTime <= 0 || !float.IsFinite(frameTime))
-            return;
-
         var elapsed = TimeSpan.FromSeconds(frameTime);
-        List<Entity<CEAnimalGrowthComponent>>? ready = null;
-        var query = EntityQueryEnumerator<CEAnimalGrowthComponent, SatiationComponent>();
-        while (query.MoveNext(out var uid, out var growth, out var satiation))
+        List<(Entity<CEAnimalGrowthComponent> Animal, float Hunger)>? ready = null;
+        var query = EntityQueryEnumerator<CEAnimalGrowthComponent, SatiationComponent, CEAnimalForagingComponent>();
+        while (query.MoveNext(out var uid, out var growth, out var satiation, out var foraging))
         {
-            if (!CanGrow((uid, growth), satiation))
+            if (!_mobState.IsAlive(uid) || _containers.IsEntityInContainer(uid)
+                || HasComp<CEAnimalExhaustedComponent>(uid) || foraging.BiteStatus != null
+                || _satiation.GetValueOrNull((uid, satiation), SatiationSystem.Hunger) is not { } hunger
+                || hunger < growth.MinimumSatiation)
                 continue;
 
             growth.Remaining -= elapsed;
             if (growth.Remaining <= TimeSpan.Zero)
-                (ready ??= new()).Add((uid, growth));
+                (ready ??= new()).Add(((uid, growth), hunger));
         }
 
         if (ready == null)
             return;
 
         // Spawning/deleting outside the query avoids invalidating its enumerator.
-        foreach (var animal in ready)
+        foreach (var (animal, hunger) in ready)
         {
             if (TerminatingOrDeleted(animal))
                 continue;
 
-            // Failed replacements retry at most once per second of eligible time.
+            // Waiting for digestion retries at most once per second of eligible time.
             animal.Comp.Remaining = TimeSpan.FromSeconds(1);
-            TryGrow(animal);
+            TryGrow(animal, hunger);
         }
     }
 
-    private bool CanGrow(Entity<CEAnimalGrowthComponent> animal, SatiationComponent satiation)
+    private void TryGrow(Entity<CEAnimalGrowthComponent> animal, float hunger)
     {
-        if (TerminatingOrDeleted(animal) || !_mobState.IsAlive(animal) ||
-            _containers.TryGetContainingContainer(animal.Owner, out _) ||
-            _satiation.GetValueOrNull((animal.Owner, satiation), SatiationSystem.Hunger) is not { } hunger ||
-            !float.IsFinite(hunger) || hunger < animal.Comp.MinimumSatiation)
-            return false;
-
-        return !HasComp<CEAnimalExhaustedComponent>(animal) &&
-               (!TryComp<CEAnimalForagingComponent>(animal, out var foraging) ||
-                foraging.BiteStatus == null && !_doAfter.IsRunning(foraging.EatingDoAfter));
-    }
-
-    private void TryGrow(Entity<CEAnimalGrowthComponent> animal)
-    {
-        if (!TryComp<SatiationComponent>(animal, out var satiation) || !CanGrow(animal, satiation) || HasPendingNutrition(animal) ||
-            !TryComp<TransformComponent>(animal, out var transform) || transform.MapUid == null)
+        var transform = Transform(animal);
+        if (transform.MapUid == null || HasPendingNutrition(animal))
             return;
 
         EntityUid adult;
@@ -91,15 +76,15 @@ public sealed partial class CEAnimalGrowthSystem : EntitySystem
             adult = Spawn(animal.Comp.GrowInto, _transform.GetMapCoordinates(animal, transform),
                 rotation: _transform.GetWorldRotation(transform));
         }
-        catch (Exception exception)
+        catch (EntityCreationException exception)
         {
-            Log.Warning($"Could not grow {ToPrettyString(animal)}: {exception.Message}");
+            AbortGrowth(animal, exception.ToString());
             return;
         }
 
-        if (!TryTransferState(animal, adult, satiation))
+        if (!TryTransferState(animal, adult, hunger))
         {
-            QueueDel(adult);
+            AbortGrowth(animal, "The adult cannot receive the chick's state.", adult);
             return;
         }
 
@@ -109,16 +94,27 @@ public sealed partial class CEAnimalGrowthSystem : EntitySystem
 
         if (_mind.TryGetMind(animal, out var mindId, out var mind))
         {
-            _mind.TransferTo(mindId, adult, mind: mind);
-            if (mind.OwnedEntity != adult || TerminatingOrDeleted(adult))
+            try
             {
-                _mind.TransferTo(mindId, animal.Owner, mind: mind);
-                QueueDel(adult);
+                _mind.TransferTo(mindId, adult, mind: mind);
+            }
+            catch (ArgumentException exception)
+            {
+                if (mind.OwnedEntity != animal.Owner)
+                    _mind.TransferTo(mindId, animal.Owner, mind: mind);
+                AbortGrowth(animal, exception.Message, adult);
                 return;
             }
         }
 
         QueueDel(animal);
+    }
+
+    private void AbortGrowth(Entity<CEAnimalGrowthComponent> animal, string reason, EntityUid? adult = null)
+    {
+        QueueDel(adult);
+        Log.Error($"Could not grow {ToPrettyString(animal)} into {animal.Comp.GrowInto}: {reason}");
+        RemComp<CEAnimalGrowthComponent>(animal);
     }
 
     private bool HasPendingNutrition(EntityUid animal)
@@ -139,23 +135,15 @@ public sealed partial class CEAnimalGrowthSystem : EntitySystem
         _solutions.TryGetSolution(uid, solutionName, out _, out var solution) &&
         solution.GetTotalPrototypeQuantity(Nutriment) > FixedPoint2.Zero;
 
-    private bool TryTransferState(EntityUid source, EntityUid adult, SatiationComponent sourceSatiation)
+    private bool TryTransferState(EntityUid source, EntityUid adult, float hunger)
     {
         if (!TryComp<DamageableComponent>(adult, out var damageable) ||
             !_thresholds.GetScaledDamage(source, adult, out var damage) || damage == null ||
-            !TryComp<SatiationComponent>(adult, out var adultSatiation))
+            !TryComp<SatiationComponent>(adult, out var adultSatiation) || !adultSatiation.Has(SatiationSystem.Hunger))
             return false;
 
         _damageable.SetDamage((adult, damageable), damage);
-        foreach (var type in sourceSatiation.Satiations.Keys)
-        {
-            if (!adultSatiation.Has(type) ||
-                _satiation.GetValueOrNull((source, sourceSatiation), type) is not { } value || !float.IsFinite(value))
-                return false;
-
-            _satiation.SetValue((adult, adultSatiation), type, value);
-        }
-
-        return !TerminatingOrDeleted(source) && !TerminatingOrDeleted(adult);
+        _satiation.SetValue((adult, adultSatiation), SatiationSystem.Hunger, hunger);
+        return true;
     }
 }

@@ -194,7 +194,8 @@ public sealed partial class CEGOAPSystem : EntitySystem
         _executableCosts.Clear();
         foreach (var action in ent.Comp.Actions)
         {
-            if (!action.RaiseCanExecute(ent, EntityManager) || !TryGetPlanningCost(ent, action, out var cost))
+            if (!action.RaiseCanExecute(ent, EntityManager, out var target)
+                || !TryGetPlanningCost(ent, action, target, out var cost))
                 continue;
 
             _executableActions.Add(action);

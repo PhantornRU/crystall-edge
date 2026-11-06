@@ -21,14 +21,14 @@ public sealed partial class CEGOAPSystem
     /// Cost of <paramref name="action"/> for the next plan: its base cost plus the walk to its target.
     /// Returns false when the action's target slot resolves to nothing, so the action can't be planned.
     /// </summary>
-    private bool TryGetPlanningCost(Entity<CEGOAPComponent> ent, CEGOAPAction action, out float cost)
+    private bool TryGetPlanningCost(Entity<CEGOAPComponent> ent, CEGOAPAction action, CEGOAPSelectorResult? resolvedTarget, out float cost)
     {
         cost = action.Cost;
 
         if (action.Target == null)
             return true;
 
-        if (!TryGetCoordinates(ResolveTarget(ent, action.Target), out var targetCoords))
+        if (!TryGetCoordinates(resolvedTarget ?? ResolveTarget(ent, action.Target), out var targetCoords))
             return false;
 
         if (action.Range is { } range

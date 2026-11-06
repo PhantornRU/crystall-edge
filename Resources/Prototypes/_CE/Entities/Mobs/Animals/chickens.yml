@@ -29,7 +29,6 @@
     satiations:
       Hunger: {prototype: SimpleMobBaseHunger}
   - type: CEAnimalForaging
-    foodTarget: ChickenFood
     foodTags: [Wheat, Corn, Vegetable]
     searchRadius: 3
     eatRange: 0.9
