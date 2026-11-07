@@ -11,7 +11,11 @@ public sealed partial class CEAnimalGrowthComponent : Component
     public TimeSpan Remaining = TimeSpan.FromMinutes(15);
 
     [DataField(required: true)]
-    public EntProtoId GrowInto;
+    public EntProtoId AdultPrototype;
+
+    // Only features gained at adulthood, never a copy of the adult body's components.
+    [DataField]
+    public ComponentRegistry AdultComponents = new();
 
     [DataField]
     public float MinimumSatiation = 25f;

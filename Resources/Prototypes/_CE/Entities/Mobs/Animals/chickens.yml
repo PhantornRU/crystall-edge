@@ -30,17 +30,18 @@
       Hunger: {prototype: SimpleMobBaseHunger}
   - type: CEAnimalForaging
     foodTags: [Wheat, Corn, Vegetable]
-    searchRadius: 3
-    eatRange: 0.9
     hungryThreshold: 60
     exhaustionThreshold: 10
     recoveryThreshold: 60
-    searchSpeedModifier: 1.35
     grazeInterval: 12
     grazeNutrition: 2
     grazeLimit: 50
     grazingTiles: [CEGrass, CEGrassLight, CEGrassTall, CEGrassAutumn, CEGrassAutumnLight, CEGrassAutumnTall]
-    eggAttemptInterval: 300
+  - type: SatiationSpeedModifier
+    satiations:
+      Hunger:
+        thresholds:
+          60: 1.35
   - type: MovementSpeedModifier
     baseWalkSpeed: 1.5
     baseSprintSpeed: 2
@@ -76,7 +77,7 @@
   parent: CEMobChickenBase
   components:
   - type: SatiationProduction
-    automatic: false
+    delay: 300
     minimumSatiation: 60
     satiationUsage: 10
   - type: EntityProducer
@@ -111,40 +112,60 @@
     sprite: _CE/Mobs/Animals/rooster.rsi
 
 - type: entity
-  id: CEMobChickenChick
+  id: CEMobChickenChickBase
+  abstract: true
   parent: CEMobChickenBase
   name: chick
-  suffix: White hen
   description: A chick that grows when healthy and sufficiently nourished.
   components:
   - type: Sprite
-    drawdepth: SmallMobs
     sprite: _CE/Mobs/Animals/chick.rsi
-  - type: Fixtures
-    fixtures:
-      fix1:
-        shape: !type:PhysShapeCircle
-          radius: 0.2
-        density: 5
-        mask: [SmallMobMask]
-        layer: [SmallMobLayer]
+
+- type: entity
+  id: CEMobChickenChick
+  parent: CEMobChickenChickBase
+  suffix: White hen
+  components:
+  - type: GenericVisualizer
+    visuals:
+      enum.CEAnimalVisuals.Grown:
+        enum.DamageStateVisualLayers.Base:
+          True: {sprite: _CE/Mobs/Animals/chicken_white.rsi}
   - type: CEAnimalGrowth
     remaining: 900
-    growInto: CEMobChickenHenWhite
+    adultPrototype: CEMobChickenHenWhite
     minimumSatiation: 25
+    adultComponents:
+    - type: SatiationProduction
+      delay: 300
+      minimumSatiation: 60
+      satiationUsage: 10
+    - type: EntityProducer
+      table: !type:EntSelector
+        id: CEFoodEgg
 
 - type: entity
   id: CEMobChickenChickBrown
   parent: CEMobChickenChick
   suffix: Brown hen
   components:
+  - type: GenericVisualizer
+    visuals:
+      enum.CEAnimalVisuals.Grown:
+        enum.DamageStateVisualLayers.Base:
+          True: {sprite: _CE/Mobs/Animals/chicken_brown.rsi}
   - type: CEAnimalGrowth
-    growInto: CEMobChickenHenBrown
+    adultPrototype: CEMobChickenHenBrown
 
 - type: entity
   id: CEMobChickenChickMale
-  parent: CEMobChickenChick
+  parent: CEMobChickenChickBase
   suffix: Rooster
   components:
+  - type: GenericVisualizer
+    visuals:
+      enum.CEAnimalVisuals.Grown:
+        enum.DamageStateVisualLayers.Base:
+          True: {sprite: _CE/Mobs/Animals/rooster.rsi}
   - type: CEAnimalGrowth
-    growInto: CEMobChickenRooster
+    adultPrototype: CEMobChickenRooster

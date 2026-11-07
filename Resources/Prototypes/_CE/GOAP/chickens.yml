@@ -42,7 +42,6 @@
     effects: {Safe: true}
   - !type:CEGOAPEatAction
     target: ChickenFood
-    range: 0.9
     preconditions: {AnimalHungry: true}
     effects: {AnimalHungry: false}
   - !type:CEGOAPIdleAction
