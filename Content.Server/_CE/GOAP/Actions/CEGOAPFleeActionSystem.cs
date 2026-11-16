@@ -50,10 +50,8 @@ public sealed partial class CEGOAPFleeActionSystem : CEGOAPActionSystem<CEGOAPFl
         Entity<CEGOAPComponent> ent,
         ref CEGOAPActionCanExecuteEvent<CEGOAPFleeAction> args)
     {
-        if (Goap.ResolveTarget(ent, args.Action.Target).Entity is not { } target)
-            return;
-
-        args.CanExecute = TryFindFleePoint(ent, target, args.Action, out _);
+        args.CanExecute = Goap.ResolveTarget(ent, args.Action.Target).Entity is { } target
+            && TryFindFleePoint(ent, target, args.Action, out _);
     }
 
     protected override void OnActionStartup(

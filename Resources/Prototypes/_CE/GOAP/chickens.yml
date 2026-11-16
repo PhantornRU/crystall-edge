@@ -29,11 +29,7 @@
   - desiredState: {AnimalHungry: false}
     preconditions: {AnimalHungry: true}
     priority: 50
-  - desiredState: {AnimalResting: true}
-    preconditions: {AnimalExhausted: true}
-    priority: 10
   - desiredState: {Exploring: true}
-    preconditions: {AnimalExhausted: false}
     priority: 1
   actions:
   - !type:CEGOAPFleeAction
@@ -46,7 +42,7 @@
     effects: {AnimalHungry: false}
   - !type:CEGOAPIdleAction
     preconditions: {AnimalExhausted: true}
-    effects: {AnimalResting: true}
+    effects: {Exploring: true}
   - !type:CEGOAPExploreAction
     preconditions: {AnimalHungry: true, AnimalExhausted: false}
     effects: {Exploring: true}

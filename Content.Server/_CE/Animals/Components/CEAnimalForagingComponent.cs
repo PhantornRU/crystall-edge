@@ -1,5 +1,4 @@
 using Content.Shared._CE.Cooking.Prototypes;
-using Content.Shared._CE.GOAP.Prototypes;
 using Content.Shared.DoAfter;
 using Robust.Shared.GameStates;
 using Robust.Shared.Prototypes;
@@ -11,17 +10,11 @@ namespace Content.Server._CE.Animals.Components;
 [RegisterComponent, AutoGenerateComponentPause]
 public sealed partial class CEAnimalForagingComponent : Component
 {
-    [DataField]
-    public ProtoId<CEGOAPTargetPrototype> ThreatTarget = "Threat";
-
     [DataField(required: true)]
     public HashSet<ProtoId<CEFoodTagPrototype>> FoodTags = new();
 
     [DataField] public float HungryThreshold = 60f;
     [DataField] public float ExhaustionThreshold = 10f;
-    [DataField] public float RecoveryThreshold = 60f;
-    [DataField] public TimeSpan UpdateInterval = TimeSpan.FromSeconds(1);
-    [DataField] public TimeSpan EatAttemptInterval = TimeSpan.FromSeconds(1);
     [DataField] public TimeSpan ThreatMemory = TimeSpan.FromSeconds(6);
     [DataField] public TimeSpan GrazeInterval = TimeSpan.FromSeconds(12);
     [DataField] public float GrazeNutrition = 2f;
@@ -50,6 +43,6 @@ public sealed partial class CEAnimalForagingComponent : Component
 [RegisterComponent]
 public sealed partial class CEAnimalHungryComponent : Component;
 
-/// <summary>Latched until the existing Hunger satiation reaches RecoveryThreshold.</summary>
+/// <summary>Latched until the existing Hunger satiation reaches HungryThreshold.</summary>
 [RegisterComponent]
 public sealed partial class CEAnimalExhaustedComponent : Component;

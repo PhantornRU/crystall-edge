@@ -32,7 +32,6 @@
     foodTags: [Wheat, Corn, Vegetable]
     hungryThreshold: 60
     exhaustionThreshold: 10
-    recoveryThreshold: 60
     grazeInterval: 12
     grazeNutrition: 2
     grazeLimit: 50

@@ -50,6 +50,3 @@
 
 - type: GOAPCondition
   id: AnimalExhausted
-
-- type: GOAPCondition
-  id: AnimalResting
