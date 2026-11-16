@@ -43,3 +43,10 @@
 # Coward
 - type: GOAPCondition
   id: Safe
+
+# Animals
+- type: GOAPCondition
+  id: AnimalHungry
+
+- type: GOAPCondition
+  id: AnimalExhausted

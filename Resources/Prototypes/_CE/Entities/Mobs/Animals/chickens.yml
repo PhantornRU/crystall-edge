@@ -1,0 +1,170 @@
+# Birds share the existing CE mob, GOAP, ingestion and satiation infrastructure.
+- type: entity
+  id: CEMobChickenBase
+  abstract: true
+  parent: [CEMobSimple, CEMobGOAPBase, MobBloodstream, BaseMobAnimal]
+  categories: [ForkFiltered]
+  components:
+  - type: CEGOAP
+    behaviors: [Chicken]
+    dormant: false
+    memoryDuration: 6
+  - type: CEGOAPEyesPerceptor
+    visionRadius: 4
+    updateInterval: 1
+    components:
+    - type: NpcFactionMember
+    - type: Edible
+  - type: CEGOAPSteering
+    climb: false
+    smash: false
+    pry: false
+    interact: false
+    unbuckle: false
+    unpull: false
+    escapeStorage: false
+  - type: NpcFactionMember
+    factions: [CEImperial]
+  - type: Satiation
+    satiations:
+      Hunger: {prototype: SimpleMobBaseHunger}
+  - type: CEAnimalForaging
+    foodTags: [Wheat, Corn, Vegetable]
+    hungryThreshold: 60
+    exhaustionThreshold: 10
+    grazeInterval: 12
+    grazeNutrition: 2
+    grazeLimit: 50
+    grazingTiles: [CEGrass, CEGrassLight, CEGrassTall, CEGrassAutumn, CEGrassAutumnLight, CEGrassAutumnTall]
+  - type: SatiationSpeedModifier
+    satiations:
+      Hunger:
+        thresholds:
+          60: 1.35
+  - type: MovementSpeedModifier
+    baseWalkSpeed: 1.5
+    baseSprintSpeed: 2
+  - type: StandingState
+  - type: RotationVisuals
+    horizontalRotation: 90
+  - type: Fixtures
+    fixtures:
+      fix1:
+        shape: !type:PhysShapeCircle
+          radius: 0.3
+        density: 8
+        mask: [MobMask]
+        layer: [MobLayer]
+  - type: MobThresholds
+    thresholds:
+      0: Alive
+      25: Critical
+      50: Dead
+  - type: Sprite
+    layers:
+    - map: ["enum.DamageStateVisualLayers.Base"]
+      state: live
+  - type: DamageStateVisuals
+    states:
+      Alive: {Base: live}
+      Critical: {Base: dead}
+      Dead: {Base: dead}
+
+- type: entity
+  id: CEMobChickenHenBase
+  abstract: true
+  parent: CEMobChickenBase
+  components:
+  - type: SatiationProduction
+    delay: 300
+    minimumSatiation: 60
+    satiationUsage: 10
+  - type: EntityProducer
+    table: !type:EntSelector
+      id: CEFoodEgg
+
+- type: entity
+  id: CEMobChickenHenWhite
+  parent: CEMobChickenHenBase
+  name: white hen
+  description: A white hen that pecks at nearby food and lays eggs when fed.
+  components:
+  - type: Sprite
+    sprite: _CE/Mobs/Animals/chicken_white.rsi
+
+- type: entity
+  id: CEMobChickenHenBrown
+  parent: CEMobChickenHenBase
+  name: brown hen
+  description: A brown hen that pecks at nearby food and lays eggs when fed.
+  components:
+  - type: Sprite
+    sprite: _CE/Mobs/Animals/chicken_brown.rsi
+
+- type: entity
+  id: CEMobChickenRooster
+  parent: CEMobChickenBase
+  name: rooster
+  description: A rooster that wanders, forages and flees from danger.
+  components:
+  - type: Sprite
+    sprite: _CE/Mobs/Animals/rooster.rsi
+
+- type: entity
+  id: CEMobChickenChickBase
+  abstract: true
+  parent: CEMobChickenBase
+  name: chick
+  description: A chick that grows when healthy and sufficiently nourished.
+  components:
+  - type: Sprite
+    sprite: _CE/Mobs/Animals/chick.rsi
+
+- type: entity
+  id: CEMobChickenChick
+  parent: CEMobChickenChickBase
+  suffix: White hen
+  components:
+  - type: GenericVisualizer
+    visuals:
+      enum.CEAnimalVisuals.Grown:
+        enum.DamageStateVisualLayers.Base:
+          True: {sprite: _CE/Mobs/Animals/chicken_white.rsi}
+  - type: CEAnimalGrowth
+    remaining: 900
+    adultPrototype: CEMobChickenHenWhite
+    minimumSatiation: 25
+    adultComponents:
+    - type: SatiationProduction
+      delay: 300
+      minimumSatiation: 60
+      satiationUsage: 10
+    - type: EntityProducer
+      table: !type:EntSelector
+        id: CEFoodEgg
+
+- type: entity
+  id: CEMobChickenChickBrown
+  parent: CEMobChickenChick
+  suffix: Brown hen
+  components:
+  - type: GenericVisualizer
+    visuals:
+      enum.CEAnimalVisuals.Grown:
+        enum.DamageStateVisualLayers.Base:
+          True: {sprite: _CE/Mobs/Animals/chicken_brown.rsi}
+  - type: CEAnimalGrowth
+    adultPrototype: CEMobChickenHenBrown
+
+- type: entity
+  id: CEMobChickenChickMale
+  parent: CEMobChickenChickBase
+  suffix: Rooster
+  components:
+  - type: GenericVisualizer
+    visuals:
+      enum.CEAnimalVisuals.Grown:
+        enum.DamageStateVisualLayers.Base:
+          True: {sprite: _CE/Mobs/Animals/rooster.rsi}
+  - type: CEAnimalGrowth
+    adultPrototype: CEMobChickenRooster

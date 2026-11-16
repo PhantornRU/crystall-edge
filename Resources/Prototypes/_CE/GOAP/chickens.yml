@@ -1,0 +1,57 @@
+- type: GOAPTarget
+  id: ChickenFood
+
+- type: GOAPBehavior
+  id: Chicken
+  targets:
+    Self: !type:CEGOAPSelectorSelf
+    ChickenFood: !type:CEGOAPSelectorNearestKnown
+      conditions:
+      - !type:CECanEatNearby
+    Threat: !type:CEGOAPSelectorNearestKnown
+      conditions:
+      - !type:CEAnimalThreat
+  sensors:
+  - !type:CEGOAPHasComponentSensorEntry
+    conditionKey: AnimalHungry
+    target: Self
+    components:
+    - type: CEAnimalHungry
+  - !type:CEGOAPHasComponentSensorEntry
+    conditionKey: AnimalExhausted
+    target: Self
+    components:
+    - type: CEAnimalExhausted
+  goals:
+  - desiredState: {Safe: true}
+    preconditions: {AnimalExhausted: false}
+    priority: 100
+  - desiredState: {AnimalHungry: false}
+    preconditions: {AnimalHungry: true}
+    priority: 50
+  - desiredState: {Exploring: true}
+    priority: 1
+  actions:
+  - !type:CEGOAPFleeAction
+    target: Threat
+    preconditions: {AnimalExhausted: false}
+    effects: {Safe: true}
+  - !type:CEGOAPEatAction
+    target: ChickenFood
+    preconditions: {AnimalHungry: true}
+    effects: {AnimalHungry: false}
+  - !type:CEGOAPIdleAction
+    preconditions: {AnimalExhausted: true}
+    effects: {Exploring: true}
+  - !type:CEGOAPExploreAction
+    preconditions: {AnimalHungry: true, AnimalExhausted: false}
+    effects: {Exploring: true}
+    exploreRadius: 5
+    minIdleTime: 0.1
+    maxIdleTime: 0.4
+  - !type:CEGOAPExploreAction
+    preconditions: {AnimalHungry: false, AnimalExhausted: false}
+    effects: {Exploring: true}
+    exploreRadius: 3
+    minIdleTime: 2
+    maxIdleTime: 6

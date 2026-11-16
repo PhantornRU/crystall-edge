@@ -37,11 +37,8 @@ public sealed partial class CEGOAPSelectorNearestKnownSystem : CEGOAPTargetSelec
             if (!_xformQuery.TryComp(known, out var knownXform))
                 continue;
 
-            if (!ev.Selector.CandidatePasses(ev.Agent, known, EntityManager))
-                continue;
-
             var dist = (_transform.GetWorldPosition(knownXform) - selfPos).LengthSquared();
-            if (dist >= bestDist)
+            if (dist >= bestDist || !ev.Selector.CandidatePasses(ev.Agent, known, EntityManager))
                 continue;
 
             bestDist = dist;
